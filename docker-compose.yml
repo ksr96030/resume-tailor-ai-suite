@@ -1,0 +1,37 @@
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: resumetailor
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  backend:
+    build: ./backend
+    environment:
+      AI_MODE: MOCK
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+      - ai-service
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  ai-service:
+    image: ghcr.io/huggingface/text-generation-inference:latest
+    environment:
+      MODEL_ID: bigscience/bloomz-560m
+    ports:
+      - "8081:80"
+
+volumes:
+  mysql_data:

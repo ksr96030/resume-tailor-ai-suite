@@ -1,0 +1,440 @@
+package com.resumetailor.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+public class AIService {
+    private static final Logger log = LoggerFactory.getLogger(AIService.class);
+
+    @Value("${ai.mode:MOCK}")
+    private String mode;
+
+    @Value("${hf.api.url:}")
+    private String hfUrl;
+
+    @Value("${hf.api.token:}")
+    private String hfToken;
+
+    @Value("${hf.chat.url:}")
+    private String hfChatUrl;
+
+    private final RestTemplate rest = new RestTemplate();
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    @PostConstruct
+    void init() {
+        log.info("[AIService] mode={}, hfUrl={}, hfChatUrl={}", mode, hfUrl, hfChatUrl);
+        if ("HF".equalsIgnoreCase(mode) && (hfUrl == null || hfUrl.isBlank()))
+            log.warn("[AIService] HF mode enabled but hf.api.url is blank");
+        if ("HF_CHAT".equalsIgnoreCase(mode) && (hfChatUrl == null || hfChatUrl.isBlank()))
+            log.warn("[AIService] HF_CHAT mode enabled but hf.chat.url is blank");
+    }
+
+    // Your existing method - keep for backward compatibility
+    public String generateTailoredResume(String resumeText, String jdText) {
+        log.info("[AIService] generateTailoredResume - Resume: {} chars, JD: {} chars",
+                resumeText.length(), jdText.length());
+
+        // For large resumes, use enhanced processing
+        if (resumeText.length() > 3000) {
+            return generateTailoredResumeEnhanced(resumeText, jdText);
+        }
+
+        String prompt = buildPrompt(resumeText, jdText);
+        return callAIService(prompt);
+    }
+
+    // New enhanced method for large resumes
+    public String generateTailoredResumeEnhanced(String resumeText, String jdText) {
+        log.info("[AIService] generateTailoredResumeEnhanced - Processing large resume: {} chars", resumeText.length());
+
+        String enhancedPrompt = buildEnhancedPrompt(resumeText, jdText);
+
+        switch (mode.toUpperCase()) {
+            case "HF":
+                return callHuggingFaceEnhanced(enhancedPrompt);
+            case "HF_CHAT":
+                return callHuggingFaceChatEnhanced(enhancedPrompt);
+            default:
+                log.info("[AIService] Using MOCK mode for enhanced tailoring");
+                return generateMockTailoredResume(resumeText, jdText);
+        }
+    }
+
+    // New method for ATS score calculation with AI
+    public Map<String, Object> calculateATSScoreWithAI(String resumeContent, String jobDescription) {
+        log.info("[AIService] calculateATSScoreWithAI - Resume: {} chars, JD: {} chars",
+                resumeContent.length(), jobDescription.length());
+
+        String prompt = buildATSPrompt(resumeContent, jobDescription);
+
+        switch (mode.toUpperCase()) {
+            case "HF_CHAT":
+                return callATSAnalysis(prompt);
+            default:
+                log.info("[AIService] Using MOCK mode for ATS analysis");
+                return generateMockATSScore(resumeContent, jobDescription);
+        }
+    }
+
+    private String callAIService(String prompt) {
+        switch (mode.toUpperCase()) {
+            case "HF":
+                return callHuggingFace(prompt);
+            case "HF_CHAT":
+                return callHuggingFaceChat(prompt);
+            default:
+                log.info("[AIService] Using MOCK mode, not calling external API");
+                return "MOCK TAILORED RESUME:\nBased on the job description, your resume has been rewritten.";
+        }
+    }
+
+    private String callHuggingFaceChatEnhanced(String prompt) {
+        if (hfChatUrl == null || hfChatUrl.isBlank() || hfToken == null || hfToken.isBlank()) {
+            log.error("[AIService] Missing HF Chat config for enhanced processing");
+            return "HF Chat configuration missing. Set hf.chat.url & hf.api.token.";
+        }
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(hfToken);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            // Increase max_tokens for large resume processing
+            String requestBody = String.format("""
+                {
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": %s
+                    }
+                  ],
+                  "model": "meta-llama/Llama-3.1-8B-Instruct",
+                  "max_tokens": 2000,
+                  "temperature": 0.3
+                }
+                """, jsonEscape(prompt));
+
+            log.info("[AIService] Enhanced POST to HF Chat {}", hfChatUrl);
+            ResponseEntity<String> resp = rest.exchange(hfChatUrl, HttpMethod.POST,
+                    new HttpEntity<>(requestBody, headers), String.class);
+
+            String raw = resp.getBody();
+            log.info("[AIService] Enhanced HF Chat status={} response_len={}",
+                    resp.getStatusCodeValue(), raw == null ? 0 : raw.length());
+
+            if (raw == null || raw.isBlank()) return "Empty response from HF Chat.";
+
+            JsonNode json = mapper.readTree(raw);
+            if (json.has("choices") && json.get("choices").isArray() && json.get("choices").size() > 0) {
+                JsonNode firstChoice = json.get("choices").get(0);
+                if (firstChoice.has("message") && firstChoice.get("message").has("content")) {
+                    String content = firstChoice.get("message").get("content").asText();
+                    log.info("[AIService] Enhanced tailoring result length: {}", content.length());
+                    return content;
+                }
+            }
+
+            log.warn("[AIService] Unexpected enhanced HF Chat response format");
+            return raw;
+        } catch (Exception ex) {
+            log.error("[AIService] Enhanced HF Chat call failed: {}", ex.toString());
+            return "Enhanced HF Chat API error: " + ex.getMessage();
+        }
+    }
+
+    private String callHuggingFaceEnhanced(String prompt) {
+        // For the old HF API, we still need to limit prompt size
+        String limitedPrompt = prompt.length() > 1200 ? prompt.substring(0, 1200) + "..." : prompt;
+        return callHuggingFace(limitedPrompt);
+    }
+
+    private Map<String, Object> callATSAnalysis(String prompt) {
+        if (hfChatUrl == null || hfChatUrl.isBlank() || hfToken == null || hfToken.isBlank()) {
+            log.error("[AIService] Missing HF Chat config for ATS analysis");
+            return generateMockATSScore("", "");
+        }
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(hfToken);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            String requestBody = String.format("""
+                {
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": %s
+                    }
+                  ],
+                  "model": "meta-llama/Llama-3.1-8B-Instruct",
+                  "max_tokens": 1000,
+                  "temperature": 0.1
+                }
+                """, jsonEscape(prompt));
+
+            ResponseEntity<String> resp = rest.exchange(hfChatUrl, HttpMethod.POST,
+                    new HttpEntity<>(requestBody, headers), String.class);
+
+            String raw = resp.getBody();
+            if (raw == null || raw.isBlank()) {
+                return generateMockATSScore("", "");
+            }
+
+            JsonNode json = mapper.readTree(raw);
+            if (json.has("choices") && json.get("choices").isArray() && json.get("choices").size() > 0) {
+                JsonNode firstChoice = json.get("choices").get(0);
+                if (firstChoice.has("message") && firstChoice.get("message").has("content")) {
+                    String content = firstChoice.get("message").get("content").asText();
+                    return parseATSResponse(content);
+                }
+            }
+
+            return generateMockATSScore("", "");
+        } catch (Exception ex) {
+            log.error("[AIService] ATS analysis call failed: {}", ex.toString());
+            return generateMockATSScore("", "");
+        }
+    }
+
+    // Your existing methods (keeping them unchanged)
+    private String callHuggingFaceChat(String prompt) {
+        if (hfChatUrl == null || hfChatUrl.isBlank() || hfToken == null || hfToken.isBlank()) {
+            log.error("[AIService] Missing HF Chat config. hfChatUrl='{}' tokenPresent={}", hfChatUrl, hfToken != null && !hfToken.isBlank());
+            return "HF Chat configuration missing. Set hf.chat.url & hf.api.token.";
+        }
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(hfToken);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            String requestBody = String.format("""
+                {
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": %s
+                    }
+                  ],
+                  "model": "meta-llama/Llama-3.1-8B-Instruct",
+                  "max_tokens": 1000,
+                  "temperature": 0.7
+                }
+                """, jsonEscape(prompt));
+
+            log.info("[AIService] POST to HF Chat {}", hfChatUrl);
+            ResponseEntity<String> resp = rest.exchange(hfChatUrl, HttpMethod.POST, new HttpEntity<>(requestBody, headers), String.class);
+
+            String raw = resp.getBody();
+            log.info("[AIService] HF Chat status={} len={}", resp.getStatusCodeValue(), raw == null ? 0 : raw.length());
+            if (raw == null || raw.isBlank()) return "Empty response from HF Chat.";
+
+            JsonNode json = mapper.readTree(raw);
+            if (json.has("choices") && json.get("choices").isArray() && json.get("choices").size() > 0) {
+                JsonNode firstChoice = json.get("choices").get(0);
+                if (firstChoice.has("message") && firstChoice.get("message").has("content")) {
+                    return firstChoice.get("message").get("content").asText();
+                }
+            }
+
+            log.warn("[AIService] Unexpected HF Chat response format: {}", raw);
+            return raw;
+        } catch (Exception ex) {
+            log.error("[AIService] HF Chat call failed: {}", ex.toString());
+            return "HF Chat API error: " + ex.getMessage();
+        }
+    }
+
+    private String callHuggingFace(String prompt) {
+        if (hfUrl == null || hfUrl.isBlank() || hfToken == null || hfToken.isBlank()) {
+            log.error("[AIService] Missing HF config. hfUrl='{}' tokenPresent={}", hfUrl, hfToken != null && !hfToken.isBlank());
+            return "HF configuration missing. Set hf.api.url & hf.api.token.";
+        }
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(hfToken);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            String shortPrompt = prompt.length() > 800 ? prompt.substring(0, 800) : prompt;
+            String body = "{\"inputs\":" + jsonEscape(shortPrompt) + "}";
+
+            log.info("[AIService] POST to HF {}", hfUrl);
+            ResponseEntity<String> resp = rest.exchange(hfUrl, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
+
+            String raw = resp.getBody();
+            log.info("[AIService] HF status={} len={}", resp.getStatusCodeValue(), raw == null ? 0 : raw.length());
+            if (raw == null || raw.isBlank()) return "Empty response from HF.";
+
+            JsonNode arr = mapper.readTree(raw);
+            if (arr.isArray() && arr.size() > 0) {
+                JsonNode first = arr.get(0);
+                if (first.has("generated_text")) {
+                    return first.get("generated_text").asText();
+                } else if (first.has("summary_text")) {
+                    return first.get("summary_text").asText();
+                }
+            }
+            return raw;
+        } catch (Exception ex) {
+            log.error("[AIService] HF call failed: {}", ex.toString());
+            return "HF API error: " + ex.getMessage();
+        }
+    }
+
+    // Enhanced prompt building methods
+    private String buildEnhancedPrompt(String resume, String jd) {
+        return String.format("""
+            You are an expert resume writer. Your task is to completely rewrite this resume to match the job description.
+            
+            CRITICAL INSTRUCTIONS:
+            1. Process the ENTIRE resume - do not truncate or summarize
+            2. Rewrite ALL sections to align with job requirements
+            3. Keep the same professional structure and format
+            4. Include ALL work experiences but emphasize relevant ones
+            5. Match keywords from job description naturally
+            6. Return ONLY the complete tailored resume text
+            
+            JOB DESCRIPTION:
+            %s
+            
+            ORIGINAL RESUME TO REWRITE:
+            %s
+            
+            TAILORED RESUME:""",
+                safeTruncate(jd, 2000), safeTruncate(resume, 4000));
+    }
+
+    private String buildATSPrompt(String resume, String jd) {
+        return String.format("""
+            You are an ATS (Applicant Tracking System) analyzer. Analyze this resume against the job description.
+            
+            Job Description:
+            %s
+            
+            Resume:
+            %s
+            
+            Provide analysis in this exact format:
+            SCORE: [number 0-100]
+            MATCHING_KEYWORDS: keyword1, keyword2, keyword3
+            MISSING_KEYWORDS: missing1, missing2, missing3
+            SUGGESTIONS: suggestion1 | suggestion2 | suggestion3
+            
+            Analysis:""",
+                safeTruncate(jd, 1500), safeTruncate(resume, 2000));
+    }
+
+    private String buildPrompt(String resume, String jd) {
+        return "You are an expert resume writer. Rewrite the resume to fit the job description. Keep the same structure but tailor the content.\n\n" +
+                "=== JOB DESCRIPTION ===\n" + safe(jd) + "\n\n" +
+                "=== ORIGINAL RESUME ===\n" + safe(resume) + "\n\n" +
+                "=== INSTRUCTIONS ===\n" +
+                "- Match keywords from the job description\n" +
+                "- Highlight relevant experience\n" +
+                "- Keep the same format and length\n" +
+                "- Only return the tailored resume text, no additional commentary\n\n" +
+                "TAILORED RESUME:";
+    }
+
+    // Mock response generators
+    private String generateMockTailoredResume(String resume, String jd) {
+        return String.format("""
+            MOCK ENHANCED TAILORED RESUME:
+            
+            This resume has been tailored to match the job description requirements.
+            
+            Original resume length: %d characters
+            Job description length: %d characters
+            
+            Key improvements made:
+            - Matched relevant keywords from job description
+            - Highlighted applicable experience
+            - Optimized for ATS compatibility
+            - Maintained professional formatting
+            
+            [In a real implementation, this would contain the complete tailored resume text]
+            """, resume.length(), jd.length());
+    }
+
+    private Map<String, Object> generateMockATSScore(String resume, String jd) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("score", 78);
+        result.put("breakdown", Map.of(
+                "keywordMatch", 75,
+                "skillsMatch", 82,
+                "experienceMatch", 76,
+                "formatMatch", 80
+        ));
+        result.put("matchingKeywords", Arrays.asList("Java", "Spring Boot", "REST API", "SQL"));
+        result.put("missingKeywords", Arrays.asList("Docker", "Kubernetes", "AWS"));
+        result.put("suggestions", Arrays.asList(
+                "Add Docker containerization experience",
+                "Include cloud platform experience",
+                "Highlight microservices architecture experience"
+        ));
+        return result;
+    }
+
+    // Helper methods
+    private Map<String, Object> parseATSResponse(String response) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            // Parse the structured response
+            String[] lines = response.split("\n");
+            for (String line : lines) {
+                if (line.startsWith("SCORE:")) {
+                    String scoreStr = line.substring(6).trim();
+                    result.put("score", Integer.parseInt(scoreStr.replaceAll("[^0-9]", "")));
+                } else if (line.startsWith("MATCHING_KEYWORDS:")) {
+                    String keywords = line.substring(18).trim();
+                    result.put("matchingKeywords", Arrays.asList(keywords.split(",\\s*")));
+                } else if (line.startsWith("MISSING_KEYWORDS:")) {
+                    String keywords = line.substring(17).trim();
+                    result.put("missingKeywords", Arrays.asList(keywords.split(",\\s*")));
+                } else if (line.startsWith("SUGGESTIONS:")) {
+                    String suggestions = line.substring(12).trim();
+                    result.put("suggestions", Arrays.asList(suggestions.split("\\|\\s*")));
+                }
+            }
+
+            // Add default breakdown
+            result.put("breakdown", Map.of(
+                    "keywordMatch", (Integer) result.getOrDefault("score", 0),
+                    "overall", (Integer) result.getOrDefault("score", 0)
+            ));
+
+        } catch (Exception e) {
+            log.error("[AIService] Error parsing ATS response: {}", e.getMessage());
+            return generateMockATSScore("", "");
+        }
+        return result;
+    }
+
+    private static String safe(String s) {
+        if (s == null) return "";
+        return s.length() > 3000 ? s.substring(0, 3000) : s;
+    }
+
+    private static String safeTruncate(String s, int maxLength) {
+        if (s == null) return "";
+        return s.length() > maxLength ? s.substring(0, maxLength) + "..." : s;
+    }
+
+    private static String jsonEscape(String s) {
+        if (s == null) return "\"\"";
+        String esc = s.replace("\\","\\\\").replace("\"","\\\"").replace("\n","\\n").replace("\r","\\r").replace("\t","\\t");
+        return "\"" + esc + "\"";
+    }
+}

@@ -1,0 +1,31 @@
+# Java / Maven
+backend/target/
+*.iml
+*.class
+.mvn/wrapper/maven-wrapper.jar
+
+# Node / React
+frontend/node_modules/
+frontend/.parcel-cache/
+frontend/dist/
+frontend/build/
+frontend/.next/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+log/
+
+# Env / Secrets
+.env
+.env.*
+frontend/.env
+backend/src/main/resources/application.properties

@@ -89,7 +89,10 @@ public class ResumeController {
                     resume.getContent().length(), job.getDescription().length());
 
             // Generate tailored resume using enhanced AI
-            String tailoredText = aiService.generateTailoredResume(resume.getContent(), job.getDescription());
+            String rawTailoredText = aiService.generateTailoredResume(resume.getContent(), job.getDescription());
+
+            // Clean and format the tailored text
+            String tailoredText = cleanAndFormatResumeText(rawTailoredText);
 
             // Calculate ATS score using existing service
             int atsScore = atsService.calculateATSScore(tailoredText, job.getDescription());
@@ -132,6 +135,65 @@ public class ResumeController {
                             .build()
             );
         }
+    }
+
+    /**
+     * Cleans and formats the resume text by removing unwanted notes and converting markdown
+     */
+    private String cleanAndFormatResumeText(String rawText) {
+        if (rawText == null || rawText.trim().isEmpty()) {
+            return rawText;
+        }
+
+        // Remove the "Note:" section and everything after it
+        String cleanedText = rawText;
+
+        // Find and remove note sections (case insensitive)
+        String[] notePatterns = {
+                "(?i)\\n\\s*Note:.*$",
+                "(?i)\\n\\s*Note -.*$",
+                "(?i)\\n\\s*\\*\\*Note\\*\\*:.*$",
+                "(?i)\\n\\s*I have rewritten.*$"
+        };
+
+        for (String pattern : notePatterns) {
+            cleanedText = cleanedText.replaceAll(pattern, "");
+        }
+
+        // Convert markdown formatting to plain text
+        cleanedText = convertMarkdownToPlainText(cleanedText);
+
+        // Clean up extra whitespace
+        cleanedText = cleanedText.replaceAll("\\n{3,}", "\n\n"); // Replace 3+ newlines with 2
+        cleanedText = cleanedText.trim();
+
+        return cleanedText;
+    }
+
+    /**
+     * Converts markdown formatting to plain text suitable for PDF generation
+     */
+    private String convertMarkdownToPlainText(String text) {
+        // Remove markdown bold formatting
+        text = text.replaceAll("\\*\\*(.*?)\\*\\*", "$1");
+
+        // Handle bullet points - convert * to •
+        text = text.replaceAll("^\\s*\\*\\s+", "• ");
+        text = text.replaceAll("\\n\\s*\\*\\s+", "\n• ");
+
+        // Handle sub-bullet points - convert + to ◦
+        text = text.replaceAll("^\\s*\\+\\s+", "  ◦ ");
+        text = text.replaceAll("\\n\\s*\\+\\s+", "\n  ◦ ");
+
+        // Handle numbered lists
+        text = text.replaceAll("\\n\\s*\\d+\\.\\s+", "\n• ");
+
+        // Remove extra markdown syntax
+        text = text.replaceAll("\\*([^*]+)\\*", "$1"); // Remove single asterisks
+        text = text.replaceAll("`([^`]+)`", "$1"); // Remove backticks
+        text = text.replaceAll("#+\\s*", ""); // Remove heading markers
+
+        return text;
     }
 
     // New ATS Score API

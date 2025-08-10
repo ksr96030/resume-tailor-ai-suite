@@ -42,18 +42,28 @@ public class AIService {
             log.warn("[AIService] HF_CHAT mode enabled but hf.chat.url is blank");
     }
 
-    // Your existing method - keep for backward compatibility
+    // Your existing method - enhanced with post-processing
     public String generateTailoredResume(String resumeText, String jdText) {
         log.info("[AIService] generateTailoredResume - Resume: {} chars, JD: {} chars",
                 resumeText.length(), jdText.length());
 
+        String rawResponse;
+
         // For large resumes, use enhanced processing
         if (resumeText.length() > 3000) {
-            return generateTailoredResumeEnhanced(resumeText, jdText);
+            rawResponse = generateTailoredResumeEnhanced(resumeText, jdText);
+        } else {
+            String prompt = buildPrompt(resumeText, jdText);
+            rawResponse = callAIService(prompt);
         }
 
-        String prompt = buildPrompt(resumeText, jdText);
-        return callAIService(prompt);
+        // Post-process the AI response to clean up formatting and remove unwanted content
+        String cleanedResponse = postProcessAIResponse(rawResponse);
+
+        log.info("[AIService] Response processed - Original: {} chars, Cleaned: {} chars",
+                rawResponse.length(), cleanedResponse.length());
+
+        return cleanedResponse;
     }
 
     // New enhanced method for large resumes
@@ -62,15 +72,22 @@ public class AIService {
 
         String enhancedPrompt = buildEnhancedPrompt(resumeText, jdText);
 
+        String rawResponse;
         switch (mode.toUpperCase()) {
             case "HF":
-                return callHuggingFaceEnhanced(enhancedPrompt);
+                rawResponse = callHuggingFaceEnhanced(enhancedPrompt);
+                break;
             case "HF_CHAT":
-                return callHuggingFaceChatEnhanced(enhancedPrompt);
+                rawResponse = callHuggingFaceChatEnhanced(enhancedPrompt);
+                break;
             default:
                 log.info("[AIService] Using MOCK mode for enhanced tailoring");
-                return generateMockTailoredResume(resumeText, jdText);
+                rawResponse = generateMockTailoredResume(resumeText, jdText);
+                break;
         }
+
+        // Post-process the enhanced response as well
+        return postProcessAIResponse(rawResponse);
     }
 
     // New method for ATS score calculation with AI
@@ -87,6 +104,98 @@ public class AIService {
                 log.info("[AIService] Using MOCK mode for ATS analysis");
                 return generateMockATSScore(resumeContent, jobDescription);
         }
+    }
+
+    /**
+     * Post-processes AI response to ensure clean, formatted output
+     */
+    private String postProcessAIResponse(String aiResponse) {
+        if (aiResponse == null || aiResponse.trim().isEmpty()) {
+            return aiResponse;
+        }
+
+        log.debug("[AIService] Post-processing AI response: {} chars", aiResponse.length());
+
+        String processed = aiResponse;
+
+        // Remove common AI commentary patterns
+        processed = removeAICommentary(processed);
+
+        // Clean up formatting
+        processed = cleanFormatting(processed);
+
+        // Ensure proper structure
+        processed = ensureProperStructure(processed);
+
+        log.debug("[AIService] Post-processing complete: {} chars", processed.length());
+
+        return processed.trim();
+    }
+
+    private String removeAICommentary(String text) {
+        // Patterns to remove (case insensitive)
+        String[] removePatterns = {
+                "(?i)\\n\\s*Note:.*$",
+                "(?i)\\n\\s*Note -.*$",
+                "(?i)\\n\\s*\\*\\*Note\\*\\*:.*$",
+                "(?i)\\n\\s*I have rewritten.*$",
+                "(?i)\\n\\s*Here is the rewritten.*$",
+                "(?i)\\n\\s*This resume has been.*$",
+                "(?i)\\n\\s*The above resume.*$",
+                "(?i)\\n\\s*Explanation:.*$",
+                "(?i)\\n\\s*Analysis:.*$",
+                "(?i)\\n\\s*MOCK.*RESUME.*$"
+        };
+
+        for (String pattern : removePatterns) {
+            text = text.replaceAll(pattern, "");
+        }
+
+        return text;
+    }
+
+    private String cleanFormatting(String text) {
+        // Convert markdown to plain text
+        text = text.replaceAll("\\*\\*(.*?)\\*\\*", "$1"); // Bold
+        text = text.replaceAll("\\*([^*\n]+)\\*", "$1"); // Italic
+        text = text.replaceAll("`([^`]+)`", "$1"); // Code
+
+        // Standardize bullet points
+        text = text.replaceAll("^\\s*[\\*-]\\s+", "• ");
+        text = text.replaceAll("\\n\\s*[\\*-]\\s+", "\n• ");
+
+        // Handle sub-bullets
+        text = text.replaceAll("^\\s*\\+\\s+", "  ◦ ");
+        text = text.replaceAll("\\n\\s*\\+\\s+", "\n  ◦ ");
+
+        // Clean up headers
+        text = text.replaceAll("#+\\s*", "");
+
+        // Normalize whitespace
+        text = text.replaceAll("\\n{3,}", "\n\n");
+        text = text.replaceAll("\\s+$", ""); // Trim trailing spaces
+
+        return text;
+    }
+
+    private String ensureProperStructure(String text) {
+        // Ensure sections are properly spaced
+        String[] commonSections = {
+                "SUMMARY", "OBJECTIVE", "EXPERIENCE", "PROFESSIONAL EXPERIENCE",
+                "EDUCATION", "SKILLS", "PROJECTS", "CERTIFICATIONS"
+        };
+
+        for (String section : commonSections) {
+            // Add proper spacing before sections if missing
+            String pattern = "(?<!\\n\\n)" + section;
+            text = text.replaceAll(pattern, "\n\n" + section);
+        }
+
+        // Clean up any excessive spacing created
+        text = text.replaceAll("\\n{3,}", "\n\n");
+        text = text.replaceAll("^\\n+", ""); // Remove leading newlines
+
+        return text;
     }
 
     private String callAIService(String prompt) {
@@ -305,6 +414,9 @@ public class AIService {
             4. Include ALL work experiences but emphasize relevant ones
             5. Match keywords from job description naturally
             6. Return ONLY the complete tailored resume text
+            7. DO NOT add any notes, explanations, or commentary at the end
+            8. DO NOT use markdown formatting (**, *, etc.) - use plain text
+            9. Use bullet points (•) for lists, not asterisks
             
             JOB DESCRIPTION:
             %s
@@ -337,35 +449,58 @@ public class AIService {
     }
 
     private String buildPrompt(String resume, String jd) {
-        return "You are an expert resume writer. Rewrite the resume to fit the job description. Keep the same structure but tailor the content.\n\n" +
-                "=== JOB DESCRIPTION ===\n" + safe(jd) + "\n\n" +
-                "=== ORIGINAL RESUME ===\n" + safe(resume) + "\n\n" +
-                "=== INSTRUCTIONS ===\n" +
-                "- Match keywords from the job description\n" +
-                "- Highlight relevant experience\n" +
-                "- Keep the same format and length\n" +
-                "- Only return the tailored resume text, no additional commentary\n\n" +
-                "TAILORED RESUME:";
+        return String.format("""
+            You are an expert resume writer. Rewrite the resume to fit the job description. Keep the same structure but tailor the content.
+            
+            IMPORTANT RULES:
+            1. Return ONLY the tailored resume text
+            2. NO explanatory notes or commentary
+            3. NO markdown formatting - use plain text only
+            4. Use bullet points (•) not asterisks (*)
+            5. Match keywords from job description naturally
+            
+            === JOB DESCRIPTION ===
+            %s
+            
+            === ORIGINAL RESUME ===
+            %s
+            
+            TAILORED RESUME:""", safe(jd), safe(resume));
     }
 
     // Mock response generators
     private String generateMockTailoredResume(String resume, String jd) {
         return String.format("""
-            MOCK ENHANCED TAILORED RESUME:
+            John Doe | Software Developer
+            Email: john.doe@email.com | Phone: (555) 123-4567
             
-            This resume has been tailored to match the job description requirements.
+            SUMMARY
+            Experienced software developer with %d years of experience in full-stack development. 
+            Skilled in Java, Spring Boot, and modern web technologies. Proven track record of 
+            delivering high-quality applications that meet business requirements.
             
-            Original resume length: %d characters
-            Job description length: %d characters
+            PROFESSIONAL EXPERIENCE
             
-            Key improvements made:
-            - Matched relevant keywords from job description
-            - Highlighted applicable experience
-            - Optimized for ATS compatibility
-            - Maintained professional formatting
+            Software Developer | Tech Company | 2020 - Present
+            • Developed and maintained web applications using Java and Spring Boot
+            • Collaborated with cross-functional teams to deliver projects on time
+            • Implemented RESTful APIs and microservices architecture
+            • Optimized application performance and reduced load times by 30%%
             
-            [In a real implementation, this would contain the complete tailored resume text]
-            """, resume.length(), jd.length());
+            Junior Developer | Previous Company | 2018 - 2020  
+            • Built responsive web interfaces using HTML, CSS, and JavaScript
+            • Participated in code reviews and maintained coding standards
+            • Worked with databases to design and optimize queries
+            
+            EDUCATION
+            Bachelor of Science in Computer Science | University Name | 2018
+            
+            SKILLS
+            • Programming: Java, Python, JavaScript, SQL
+            • Frameworks: Spring Boot, React, Node.js
+            • Databases: MySQL, PostgreSQL, MongoDB
+            • Tools: Git, Docker, Jenkins, AWS
+            """, Math.min(resume.length() / 500, 5));
     }
 
     private Map<String, Object> generateMockATSScore(String resume, String jd) {

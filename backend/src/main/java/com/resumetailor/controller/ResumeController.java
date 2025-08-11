@@ -89,6 +89,14 @@ public class ResumeController {
                     resume.getContent().length(), job.getDescription().length());
 
 
+
+            // Generate tailored resume using enhanced AI
+            String rawTailoredText = aiService.generateTailoredResume(resume.getContent(), job.getDescription());
+
+            // Clean and format the tailored text
+            String tailoredText = cleanAndFormatResumeText(rawTailoredText);
+
+
             String rawTailoredText = aiService.generateTailoredResume(resume.getContent(), job.getDescription());
 
             String tailoredText = cleanAndFormatResumeText(rawTailoredText);
@@ -135,6 +143,7 @@ public class ResumeController {
             );
         }
     }
+
 
 
     private String cleanAndFormatResumeText(String rawText) {

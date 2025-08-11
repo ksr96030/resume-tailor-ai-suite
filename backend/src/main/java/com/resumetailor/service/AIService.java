@@ -85,6 +85,7 @@ public class AIService {
                 break;
         }
 
+
         return postProcessAIResponse(rawResponse);
     }
 
@@ -103,6 +104,7 @@ public class AIService {
         }
     }
 
+
     private String postProcessAIResponse(String aiResponse) {
         if (aiResponse == null || aiResponse.trim().isEmpty()) {
             return aiResponse;
@@ -112,9 +114,19 @@ public class AIService {
 
         String processed = aiResponse;
 
+
         processed = removeAICommentary(processed);
 
         processed = cleanFormatting(processed);
+
+
+        // Remove common AI commentary patterns
+        processed = removeAICommentary(processed);
+
+        // Clean up formatting
+        processed = cleanFormatting(processed);
+
+        // Ensure proper structure
 
         processed = ensureProperStructure(processed);
 
@@ -124,6 +136,7 @@ public class AIService {
     }
 
     private String removeAICommentary(String text) {
+
         String[] removePatterns = {
                 "(?i)\\n\\s*Note:.*$",
                 "(?i)\\n\\s*Note -.*$",
@@ -151,6 +164,7 @@ public class AIService {
         text = text.replaceAll("`([^`]+)`", "$1"); // Code
 
 
+
         text = text.replaceAll("^\\s*[\\*-]\\s+", "• ");
         text = text.replaceAll("\\n\\s*[\\*-]\\s+", "\n• ");
 
@@ -161,6 +175,20 @@ public class AIService {
 
         text = text.replaceAll("#+\\s*", "");
 
+
+
+        // Standardize bullet points
+        text = text.replaceAll("^\\s*[\\*-]\\s+", "• ");
+        text = text.replaceAll("\\n\\s*[\\*-]\\s+", "\n• ");
+
+        // Handle sub-bullets
+        text = text.replaceAll("^\\s*\\+\\s+", "  ◦ ");
+        text = text.replaceAll("\\n\\s*\\+\\s+", "\n  ◦ ");
+
+        // Clean up headers
+        text = text.replaceAll("#+\\s*", "");
+
+        // Normalize whitespace
 
         text = text.replaceAll("\\n{3,}", "\n\n");
         text = text.replaceAll("\\s+$", ""); // Trim trailing spaces
@@ -468,6 +496,7 @@ public class AIService {
             Experienced software developer with %d years of experience in full-stack development. 
             Skilled in Java, Spring Boot, and modern web technologies. Proven track record of 
             delivering high-quality applications that meet business requirements.
+
             
             PROFESSIONAL EXPERIENCE
             
@@ -485,6 +514,25 @@ public class AIService {
             EDUCATION
             Bachelor of Science in Computer Science | University Name | 2018
             
+
+            
+            PROFESSIONAL EXPERIENCE
+            
+            Software Developer | Tech Company | 2020 - Present
+            • Developed and maintained web applications using Java and Spring Boot
+            • Collaborated with cross-functional teams to deliver projects on time
+            • Implemented RESTful APIs and microservices architecture
+            • Optimized application performance and reduced load times by 30%%
+            
+            Junior Developer | Previous Company | 2018 - 2020  
+            • Built responsive web interfaces using HTML, CSS, and JavaScript
+            • Participated in code reviews and maintained coding standards
+            • Worked with databases to design and optimize queries
+            
+            EDUCATION
+            Bachelor of Science in Computer Science | University Name | 2018
+            
+
             SKILLS
             • Programming: Java, Python, JavaScript, SQL
             • Frameworks: Spring Boot, React, Node.js

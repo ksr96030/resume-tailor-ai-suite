@@ -61,7 +61,7 @@ public class Job {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // One-to-many relationship with TailoredResume
+
     @OneToMany(mappedBy = "job", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<TailoredResume> tailoredResumes;
 

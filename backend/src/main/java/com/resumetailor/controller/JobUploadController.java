@@ -39,21 +39,21 @@ public class JobUploadController {
                 return ResponseEntity.badRequest().body("Job description cannot be empty");
             }
 
-            // Save job description with all required fields
+
             Job job = new Job();
             job.setTitle(title);
             job.setCompany(company);
             job.setLocation(location);
             job.setDescription(jobDescriptionText.trim());
-            job.setRequirements(""); // Set empty string as default
-            job.setSalaryRange(""); // Set empty string as default
+            job.setRequirements("");
+            job.setSalaryRange("");
             job.setEmploymentType(employmentType);
             job.setExperienceLevel(experienceLevel);
-            job.setJobUrl(""); // Set empty string as default
+            job.setJobUrl("");
             job.setPostedDate(LocalDateTime.now());
             job.setCreatedAt(LocalDateTime.now());
             job.setUpdatedAt(LocalDateTime.now());
-            job.setApplicationDeadline(null); // This can be null
+            job.setApplicationDeadline(null);
 
             Job savedJob = jobRepository.save(job);
 

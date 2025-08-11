@@ -88,19 +88,26 @@ public class ResumeController {
             log.info("[ResumeController] Processing - Resume: {} chars, Job: {} chars",
                     resume.getContent().length(), job.getDescription().length());
 
+
+
             // Generate tailored resume using enhanced AI
             String rawTailoredText = aiService.generateTailoredResume(resume.getContent(), job.getDescription());
 
             // Clean and format the tailored text
             String tailoredText = cleanAndFormatResumeText(rawTailoredText);
 
-            // Calculate ATS score using existing service
+
+            String rawTailoredText = aiService.generateTailoredResume(resume.getContent(), job.getDescription());
+
+            String tailoredText = cleanAndFormatResumeText(rawTailoredText);
+
+
             int atsScore = atsService.calculateATSScore(tailoredText, job.getDescription());
 
             log.info("[ResumeController] Tailoring complete - Original: {} chars, Tailored: {} chars, ATS Score: {}",
                     resume.getContent().length(), tailoredText.length(), atsScore);
 
-            // Save tailored resume
+
             TailoredResume tailoredResume = TailoredResume.builder()
                     .resume(resume)
                     .job(job)
@@ -137,9 +144,8 @@ public class ResumeController {
         }
     }
 
-    /**
-     * Cleans and formats the resume text by removing unwanted notes and converting markdown
-     */
+
+
     private String cleanAndFormatResumeText(String rawText) {
         if (rawText == null || rawText.trim().isEmpty()) {
             return rawText;
@@ -170,9 +176,7 @@ public class ResumeController {
         return cleanedText;
     }
 
-    /**
-     * Converts markdown formatting to plain text suitable for PDF generation
-     */
+
     private String convertMarkdownToPlainText(String text) {
         // Remove markdown bold formatting
         text = text.replaceAll("\\*\\*(.*?)\\*\\*", "$1");
@@ -196,63 +200,72 @@ public class ResumeController {
         return text;
     }
 
-    // New ATS Score API
+
     @PostMapping("/ats-score")
-    public ResponseEntity<?> calculateATSScore(@RequestBody TailorResumeRequest request) {
-        log.info("[ResumeController] Calculating ATS score for resume {} and job {}",
-                request.getResumeId(), request.getJobId());
+    public ResponseEntity<?> calculateATSScorePost(@RequestBody TailorResumeRequest request) {
+        return buildAtsResponse(request.getResumeId(), request.getJobId());
+    }
+
+
+    @GetMapping("/ats-score")
+    public ResponseEntity<?> calculateATSScoreGet(@RequestParam Long resumeId,
+                                                  @RequestParam Long jobId) {
+        return buildAtsResponse(resumeId, jobId);
+    }
+
+
+    private ResponseEntity<?> buildAtsResponse(Long resumeId, Long jobId) {
+        log.info("[ResumeController] Calculating ATS score for resume {} and job {}", resumeId, jobId);
 
         try {
-            Optional<Resume> resumeOpt = resumeRepository.findById(request.getResumeId());
-            Optional<Job> jobOpt = jobRepository.findById(request.getJobId());
+            var resumeOpt = resumeRepository.findById(resumeId);
+            var jobOpt = jobRepository.findById(jobId);
 
             if (resumeOpt.isEmpty()) {
-                Map<String, String> error = new HashMap<>();
-                error.put("status", "error");
-                error.put("message", "Resume not found");
-                return ResponseEntity.badRequest().body(error);
+                return ResponseEntity.badRequest().body(Map.of(
+                        "status","error","message","Resume not found"));
             }
-
             if (jobOpt.isEmpty()) {
-                Map<String, String> error = new HashMap<>();
-                error.put("status", "error");
-                error.put("message", "Job not found");
-                return ResponseEntity.badRequest().body(error);
+                return ResponseEntity.badRequest().body(Map.of(
+                        "status","error","message","Job not found"));
             }
 
             Resume resume = resumeOpt.get();
             Job job = jobOpt.get();
 
-            // Calculate basic ATS score using existing service
             int basicScore = atsService.calculateATSScore(resume.getContent(), job.getDescription());
-
-            // Get detailed ATS analysis from AI (if available)
-            Map<String, Object> detailedAnalysis = aiService.calculateATSScoreWithAI(
+            Map<String,Object> detailed = aiService.calculateATSScoreWithAI(
                     resume.getContent(), job.getDescription());
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("status", "success");
-            response.put("message", "ATS score calculated successfully");
-            response.put("resumeId", request.getResumeId());
-            response.put("jobId", request.getJobId());
-            response.put("candidateName", resume.getCandidateName());
-            response.put("jobTitle", job.getTitle());
-            response.put("basicScore", basicScore);
-            response.put("detailedScore", detailedAnalysis.get("score"));
-            response.put("breakdown", detailedAnalysis.get("breakdown"));
-            response.put("matchingKeywords", detailedAnalysis.get("matchingKeywords"));
-            response.put("missingKeywords", detailedAnalysis.get("missingKeywords"));
-            response.put("suggestions", detailedAnalysis.get("suggestions"));
+            Map<String,Object> resp = new HashMap<>();
+            resp.put("status","success");
+            resp.put("message","ATS score calculated successfully");
+            resp.put("resumeId", resumeId);
+            resp.put("jobId", jobId);
+            resp.put("candidateName", resume.getCandidateName());
+            resp.put("jobTitle", job.getTitle());
+            resp.put("basicScore", basicScore);
+            resp.put("detailedScore", detailed.get("score"));
+            resp.put("breakdown", detailed.get("breakdown"));
+            resp.put("matchingKeywords", detailed.get("matchingKeywords"));
+            resp.put("missingKeywords", detailed.get("missingKeywords"));
+            resp.put("suggestions", detailed.get("suggestions"));
 
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(resp);
 
         } catch (Exception e) {
-            log.error("[ResumeController] Error calculating ATS score: {}", e.getMessage());
-            Map<String, String> error = new HashMap<>();
-            error.put("status", "error");
-            error.put("message", "Failed to calculate ATS score: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+            log.error("[ResumeController] Error calculating ATS score", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "status","error","message","Failed to calculate ATS score: "+e.getMessage()));
         }
+    }
+
+
+    @GetMapping("/{id:\\d+}")
+    public ResponseEntity<?> getResume(@PathVariable Long id) {
+        return resumeRepository.findById(id)
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping("/tailored/{id}")

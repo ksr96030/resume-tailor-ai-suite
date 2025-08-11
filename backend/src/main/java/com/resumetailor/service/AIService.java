@@ -42,14 +42,14 @@ public class AIService {
             log.warn("[AIService] HF_CHAT mode enabled but hf.chat.url is blank");
     }
 
-    // Your existing method - enhanced with post-processing
+
     public String generateTailoredResume(String resumeText, String jdText) {
         log.info("[AIService] generateTailoredResume - Resume: {} chars, JD: {} chars",
                 resumeText.length(), jdText.length());
 
         String rawResponse;
 
-        // For large resumes, use enhanced processing
+
         if (resumeText.length() > 3000) {
             rawResponse = generateTailoredResumeEnhanced(resumeText, jdText);
         } else {
@@ -57,7 +57,7 @@ public class AIService {
             rawResponse = callAIService(prompt);
         }
 
-        // Post-process the AI response to clean up formatting and remove unwanted content
+
         String cleanedResponse = postProcessAIResponse(rawResponse);
 
         log.info("[AIService] Response processed - Original: {} chars, Cleaned: {} chars",
@@ -66,7 +66,6 @@ public class AIService {
         return cleanedResponse;
     }
 
-    // New enhanced method for large resumes
     public String generateTailoredResumeEnhanced(String resumeText, String jdText) {
         log.info("[AIService] generateTailoredResumeEnhanced - Processing large resume: {} chars", resumeText.length());
 
@@ -86,11 +85,10 @@ public class AIService {
                 break;
         }
 
-        // Post-process the enhanced response as well
+
         return postProcessAIResponse(rawResponse);
     }
 
-    // New method for ATS score calculation with AI
     public Map<String, Object> calculateATSScoreWithAI(String resumeContent, String jobDescription) {
         log.info("[AIService] calculateATSScoreWithAI - Resume: {} chars, JD: {} chars",
                 resumeContent.length(), jobDescription.length());
@@ -106,9 +104,7 @@ public class AIService {
         }
     }
 
-    /**
-     * Post-processes AI response to ensure clean, formatted output
-     */
+
     private String postProcessAIResponse(String aiResponse) {
         if (aiResponse == null || aiResponse.trim().isEmpty()) {
             return aiResponse;
@@ -118,6 +114,12 @@ public class AIService {
 
         String processed = aiResponse;
 
+
+        processed = removeAICommentary(processed);
+
+        processed = cleanFormatting(processed);
+
+
         // Remove common AI commentary patterns
         processed = removeAICommentary(processed);
 
@@ -125,6 +127,7 @@ public class AIService {
         processed = cleanFormatting(processed);
 
         // Ensure proper structure
+
         processed = ensureProperStructure(processed);
 
         log.debug("[AIService] Post-processing complete: {} chars", processed.length());
@@ -133,7 +136,7 @@ public class AIService {
     }
 
     private String removeAICommentary(String text) {
-        // Patterns to remove (case insensitive)
+
         String[] removePatterns = {
                 "(?i)\\n\\s*Note:.*$",
                 "(?i)\\n\\s*Note -.*$",
@@ -155,10 +158,24 @@ public class AIService {
     }
 
     private String cleanFormatting(String text) {
-        // Convert markdown to plain text
+
         text = text.replaceAll("\\*\\*(.*?)\\*\\*", "$1"); // Bold
         text = text.replaceAll("\\*([^*\n]+)\\*", "$1"); // Italic
         text = text.replaceAll("`([^`]+)`", "$1"); // Code
+
+
+
+        text = text.replaceAll("^\\s*[\\*-]\\s+", "• ");
+        text = text.replaceAll("\\n\\s*[\\*-]\\s+", "\n• ");
+
+
+        text = text.replaceAll("^\\s*\\+\\s+", "  ◦ ");
+        text = text.replaceAll("\\n\\s*\\+\\s+", "\n  ◦ ");
+
+
+        text = text.replaceAll("#+\\s*", "");
+
+
 
         // Standardize bullet points
         text = text.replaceAll("^\\s*[\\*-]\\s+", "• ");
@@ -172,6 +189,7 @@ public class AIService {
         text = text.replaceAll("#+\\s*", "");
 
         // Normalize whitespace
+
         text = text.replaceAll("\\n{3,}", "\n\n");
         text = text.replaceAll("\\s+$", ""); // Trim trailing spaces
 
@@ -318,7 +336,7 @@ public class AIService {
         }
     }
 
-    // Your existing methods (keeping them unchanged)
+
     private String callHuggingFaceChat(String prompt) {
         if (hfChatUrl == null || hfChatUrl.isBlank() || hfToken == null || hfToken.isBlank()) {
             log.error("[AIService] Missing HF Chat config. hfChatUrl='{}' tokenPresent={}", hfChatUrl, hfToken != null && !hfToken.isBlank());
@@ -402,7 +420,7 @@ public class AIService {
         }
     }
 
-    // Enhanced prompt building methods
+
     private String buildEnhancedPrompt(String resume, String jd) {
         return String.format("""
             You are an expert resume writer. Your task is to completely rewrite this resume to match the job description.
@@ -468,7 +486,7 @@ public class AIService {
             TAILORED RESUME:""", safe(jd), safe(resume));
     }
 
-    // Mock response generators
+
     private String generateMockTailoredResume(String resume, String jd) {
         return String.format("""
             John Doe | Software Developer
@@ -478,6 +496,7 @@ public class AIService {
             Experienced software developer with %d years of experience in full-stack development. 
             Skilled in Java, Spring Boot, and modern web technologies. Proven track record of 
             delivering high-quality applications that meet business requirements.
+
             
             PROFESSIONAL EXPERIENCE
             
@@ -495,6 +514,25 @@ public class AIService {
             EDUCATION
             Bachelor of Science in Computer Science | University Name | 2018
             
+
+            
+            PROFESSIONAL EXPERIENCE
+            
+            Software Developer | Tech Company | 2020 - Present
+            • Developed and maintained web applications using Java and Spring Boot
+            • Collaborated with cross-functional teams to deliver projects on time
+            • Implemented RESTful APIs and microservices architecture
+            • Optimized application performance and reduced load times by 30%%
+            
+            Junior Developer | Previous Company | 2018 - 2020  
+            • Built responsive web interfaces using HTML, CSS, and JavaScript
+            • Participated in code reviews and maintained coding standards
+            • Worked with databases to design and optimize queries
+            
+            EDUCATION
+            Bachelor of Science in Computer Science | University Name | 2018
+            
+
             SKILLS
             • Programming: Java, Python, JavaScript, SQL
             • Frameworks: Spring Boot, React, Node.js
@@ -522,7 +560,7 @@ public class AIService {
         return result;
     }
 
-    // Helper methods
+
     private Map<String, Object> parseATSResponse(String response) {
         Map<String, Object> result = new HashMap<>();
         try {
@@ -544,7 +582,7 @@ public class AIService {
                 }
             }
 
-            // Add default breakdown
+
             result.put("breakdown", Map.of(
                     "keywordMatch", (Integer) result.getOrDefault("score", 0),
                     "overall", (Integer) result.getOrDefault("score", 0)

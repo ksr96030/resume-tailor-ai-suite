@@ -42,10 +42,10 @@ public class ResumeUploadController {
                 return ResponseEntity.badRequest().body("File is empty");
             }
 
-            // Extract text from file
+
             String extractedText = fileProcessingService.extractTextFromFile(file);
 
-            // Save resume with all required fields
+
             Resume resume = new Resume();
             resume.setContent(extractedText);
             resume.setFilename(file.getOriginalFilename());
